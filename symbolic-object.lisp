@@ -60,8 +60,19 @@
     (or (find-package namespace-package-name)
 	(make-package namespace-package-name :use nil))))
 
+(defun make-symbolic-object-field-reader/writer (s-object field-symbol reader-name writer-name)
+  (add-symbolic-object-method s-object reader-name
+			      (lambda () (symbol-value field-symbol)))
+  (add-symbolic-object-method s-object writer-name
+			      (lambda (val) (setf (symbol-value field-symbol) val))))
+
+(defun make-symbolic-object-class-method (fields method-name lambda-list body)
+  (flet ((method-name 
+  (flet ((maker 
+
 (defmacro define-symbolic-object-class (name super-class-names fields methods)
-  (let ((field-specs nil))
+  (let ((field-specs nil)
+	(method-names nil))
     ;; makes some global defs
     (loop for field-def in fields
        as field-name = (first field-def)
@@ -72,23 +83,21 @@
        do (add-global-function-to-symbolic-object-method field-name reader-name)
        unless (fboundp `(setf ,field-name))
        do (add-global-function-to-symbolic-object-method `(setf ,field-name) writer-name)
-       ;; reader/writer を作る関数を作る
-       do (let ((reader-name reader-name)
-		(writer-name writer-name))
-	    (flet ((make-reader/writer (s-object sym)
-		     (add-symbolic-object-method s-object reader-name
-						 (lambda () (symbol-value sym)))
-		     (add-symbolic-object-method s-object writer-name
-						 (lambda (val) (setf (symbol-value sym) val)))))
-	      (push `(,field-name ,#'make-reader/writer ,@(rest field-def)) field-specs)))
+       ;; spec 回収
+       do (push `(,field-name ,reader-name ,writer-name ,@(rest field-def)) field-specs)
        ;; 
        finally (setf field-specs (nreverse field-specs)))
     `(loop for class-name in ',super-class-names
 	append (get class-name :symbolic-class-field-specs) into this-class-field-specs
-	append (get class-name :symbolic-class-methods) into this-class-methods
+	append (get class-name :symbolic-class-method-specs) into this-class-method-specs
 	finally
-	  (setf (get ',name :symbolic-class-field-specs) (append this-class-field-specs ',field-specs)
-		(get ',name :symbolic-class-methods) (append this-class-methods ',methods)))))
+	  (flet (,@(loop for (method-name method-lambda-list . method-body) in methods
+		      collect `(,method-name (,@method-lambda-list) ,@method-body)
+		      do (push method-name method-names)))
+	    (setf (get ',name :symbolic-class-field-specs) (append this-class-field-specs ',field-specs)
+		  (get ',name :symbolic-class-method-specs) (append this-class-method-specs ,method-specs))))))
+
+ ; TODO: use parse-lambda in alexandria
 
 (defun apply-symbolic-object-class (s-object symbolic-class-name)
   (let* ((field-specs (get symbolic-class-name :symbolic-class-field-specs))
@@ -97,18 +106,14 @@
 	 (namespace (or (find-package namespace-package-name)
 			(make-package namespace-package-name :use nil))))
     ;; * field 生成
-    (loop for (field-name reader/writer-maker . field-inits) in field-specs
+    (loop for (field-name reader-name writer-name . field-inits) in field-specs
        as sym = (intern field-name namespace)
        ;; initialize
        when field-inits
        do (setf (symbol-value sym) (first field-inits))
        ;; reader/writer
-       do (funcall reader/writer-maker s-object sym))
+       do (make-symbolic-object-field-reader/writer s-object sym reader-name writer-name))
     ;; ;; * method 生成
-    ;; (loop for (method-name method-lambda-list . method-body) in methods ; TODO: use parse-lambda in alexandria
-    ;;    do (add-symbolic-object-method s-object method-name
-    ;; 				      `(lambda (,@method-lambda-list) ,@method-body))
-    ;; 	 (add-global-function-to-symbolic-object-method method-name)))
     s-object))
 
 (define-symbolic-object-class test-class ()
