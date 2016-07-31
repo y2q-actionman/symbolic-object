@@ -37,8 +37,8 @@
 (call-symbolic-method 'test-obj 'test-hello)
 
 
-;; おまけ：通常関数のように call する。
-(defun add-global-function-to-symbolic-object-method (defun-name &optional (method-name defun-name))
+;; 通常関数のように call する。
+(defun add-global-function-for-symbolic-object-method (defun-name &optional (method-name defun-name))
   (cond ((and (listp defun-name)	; setf function
 	      (eq (first defun-name) 'setf))
 	 (setf (fdefinition defun-name)
@@ -49,9 +49,17 @@
 	       (lambda (obj &rest args)
 		 (apply #'call-symbolic-method obj method-name args))))))
 
-(add-global-function-to-symbolic-object-method 'test-hello)
-
+(add-global-function-for-symbolic-object-method 'test-hello)
 (test-hello 'test-obj)
+
+;; 逆順で call (おまけ)
+(defun add-global-function-for-symbolic-object (s-object)
+  (setf (fdefinition s-object)
+	(lambda (symbolic-method-name &rest args)
+	  (apply #'call-symbolic-method s-object symbolic-method-name args))))
+
+(add-global-function-for-symbolic-object 'test-obj)
+(test-obj 'test-hello)
   
 
 ;; class
@@ -80,9 +88,9 @@
        as writer-name = (intern (format nil "~S-writer" field-name))
        ;; global defs
        unless (fboundp field-name)
-       do (add-global-function-to-symbolic-object-method field-name reader-name)
+       do (add-global-function-for-symbolic-object-method field-name reader-name)
        unless (fboundp `(setf ,field-name))
-       do (add-global-function-to-symbolic-object-method `(setf ,field-name) writer-name)
+       do (add-global-function-for-symbolic-object-method `(setf ,field-name) writer-name)
        ;; spec 回収
        do (push `(,field-name ,reader-name ,writer-name ,@(rest field-def)) field-specs)
        ;; 
@@ -103,7 +111,7 @@
 		 as method-maker-name = (gensym (format nil "method-maker-~A" method-name))
 		 ;; global defs
 		 unless (fboundp method-name)
-		 do (add-global-function-to-symbolic-object-method method-name)
+		 do (add-global-function-for-symbolic-object-method method-name)
 		 ;; spec 回収
 		 do (push `(list ',method-name #',method-maker-name) method-specs)
 		 ;; flet form
@@ -163,23 +171,42 @@
   ((field-a 1)
    (field-b nil)
    (field-c))				; unbound
-  ((class-method-hello () "Hello, class world!")
-   (class-method-describe () (format t "~&field-a = ~A, field-b = ~A, field-c = ~A~%"
+  ((method-hello () "Hello, class world!")
+   (method-describe-test-class () (format t "~&field-a = ~A, field-b = ~A, field-c = ~A~%"
 				     field-a field-b field-c))))
 
 (define-symbolic-object-class test-class-2 (test-class)
   ((field-b 10)				; override
    (field-c 100))			; override
-  ((class-method-all-sum (&rest args)
+  ((method-all-sum (&rest args)
 			 (apply #'+ field-a field-b field-c args))))
 
 (apply-symbolic-object-class 'test-obj 'test-class)
+
+;; fields
+(format t "~& a ~A, b ~A, c ~A~%"
+	(field-a 'test-obj) (field-b 'test-obj) (field-a 'test-obj))
+(setf (field-a 'test-obj) "a")
+(setf (field-b 'test-obj) "b")
+(setf (field-c 'test-obj) "c")
+(method-describe-test-class 'test-obj)
+
+;; method call
+(call-symbolic-method 'test-obj 'method-hello)
+(method-hello 'test-obj)
+(call-symbolic-method 'test-obj 'method-describe-test-class)
+(method-describe-test-class 'test-obj)
+
+
+;; inheritance
 (apply-symbolic-object-class 'test-obj-2 'test-class-2)
 
-(call-symbolic-method 'test-obj 'class-method-hello)
-(call-symbolic-method 'test-obj 'class-method-describe)
+(call-symbolic-method 'test-obj-2 'method-hello)
+(method-hello 'test-obj-2)
+(call-symbolic-method 'test-obj-2 'method-describe-test-class)
+(method-describe-test-class 'test-obj-2)
 
-(call-symbolic-method 'test-obj-2 'class-method-hello)
-(call-symbolic-method 'test-obj-2 'class-method-describe)
-(call-symbolic-method 'test-obj-2 'class-method-all-sum)
-(call-symbolic-method 'test-obj-2 'class-method-all-sum 1000)
+(call-symbolic-method 'test-obj-2 'method-all-sum)
+(method-all-sum 'test-obj-2)
+(call-symbolic-method 'test-obj-2 'method-all-sum 1000)
+(method-all-sum 'test-obj-2 1000)
