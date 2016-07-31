@@ -71,13 +71,13 @@
 
 ;; class
 (defun add-spec-into-spec-list (new-spec spec-list)
-  (loop with ret = nil
-     for spec in spec-list
-     unless (eq (first spec) (first new-spec))
-     do (push spec ret)
-     finally
-       (push new-spec ret)
-       (return ret)))
+  (loop for spec-cons on spec-list
+     as spec = (car spec-cons)
+     if (eq (first spec) (first new-spec)) ; if exists, overwrite it.
+     return (nconc ret (list* new-spec (cdr spec-cons)))
+     else
+     collect spec into ret
+     finally (return (list* new-spec spec-list)))) ; if not found, add it.
 
 (defun merge-spec-list (spec-list new-spec-list)
   (loop for s in new-spec-list
@@ -87,36 +87,33 @@
 (defvar *check-global-function-existence* t)
 
 (defmacro define-symbolic-object-class (name super-class-names fields methods)
-  (let ((field-specs nil)
-	(method-specs nil)
-	(field-names nil))
-    ;; makes some global defs
-    (loop for field-def in fields
-       as field-name = (first field-def)
-       as reader-name = (intern (format nil "~S-reader" field-name))
-       as writer-name = (intern (format nil "~S-writer" field-name))
-       ;; global defs
-       when (and *check-global-function-existence*
-		 (not (fboundp field-name)))
-       do (add-global-function-for-symbolic-object-method field-name reader-name)
-       when (and *check-global-function-existence*
-		 (not (fboundp `(setf ,field-name))))
-       do (add-global-function-for-symbolic-object-method `(setf ,field-name) writer-name)
-       ;; spec 回収
-       do (push `(,field-name ,reader-name ,writer-name ,@(rest field-def)) field-specs)
-       ;; 
-       finally (setf field-specs (nreverse field-specs)))
-    ;; merge field specs
-    (loop with this-class-field-specs = nil
-       for class-name in super-class-names
-       do (setf this-class-field-specs (merge-spec-list this-class-field-specs
-							(get class-name :symbolic-class-field-specs)))
-       finally
-	 (setf this-class-field-specs
-	       (merge-spec-list this-class-field-specs field-specs))
-	 (setf (get name :symbolic-class-field-specs)
-	       (merge-spec-list this-class-field-specs field-specs))
-	 (setf field-names (mapcar #'car this-class-field-specs)))
+  (let* ((this-class-field-specs
+	  ;; makes some global defs
+	  (loop for field-def in fields
+	     as field-name = (first field-def)
+	     as reader-name = (intern (format nil "~S-reader" field-name))
+	     as writer-name = (intern (format nil "~S-writer" field-name))
+	     ;; global defs
+	     when (and *check-global-function-existence*
+		       (not (fboundp field-name)))
+	     do (add-global-function-for-symbolic-object-method field-name reader-name)
+	     when (and *check-global-function-existence*
+		       (not (fboundp `(setf ,field-name))))
+	     do (add-global-function-for-symbolic-object-method `(setf ,field-name) writer-name)
+	     ;; spec 回収
+	     collect `(,field-name ,reader-name ,writer-name ,@(rest field-def))))
+	 (all-field-specs
+	  ;; merge field specs
+	  (loop for super-class-name in super-class-names
+	     as super-class-field-specs = (get super-class-name :symbolic-class-field-specs)
+	     as all-specs = super-class-field-specs
+	     then (merge-spec-list all-specs super-class-field-specs)
+	     finally
+	       (setf all-specs (merge-spec-list all-specs this-class-field-specs))
+	       (setf (get name :symbolic-class-field-specs) all-specs)
+	       (return all-specs)))
+	 (field-names  (mapcar #'car all-field-specs))
+	 (method-specs nil))
     ;; generate method-making functions
     `(flet (,@(loop for (method-name method-lambda-list . method-body) in methods
 		 as method-maker-name = (gensym (format nil "method-maker-~A" method-name))
@@ -148,6 +145,7 @@
 	    (setf (get ',name :symbolic-class-method-specs)
 		  (merge-spec-list this-class-method-specs (list ,@method-specs)))))))
 ;; TODO: use parse-lambda in alexandria
+;; TODO: add structure for 'field-spec' and 'method-spec'
 
 (defun apply-symbolic-object-class (s-object symbolic-class-name)
   (let* ((field-specs (get symbolic-class-name :symbolic-class-field-specs))
