@@ -88,6 +88,7 @@
 	(delete-duplicates merged :test 'eq :key #'spec-name))))
 
   (defvar *check-global-function-existence* t)
+  (defvar *self*)
   )
 
 (defmacro define-symbolic-object-class (name super-class-names fields methods)
@@ -127,12 +128,13 @@
 		 ;; spec 回収
 		 do (push `(list ',method-name #',method-maker-name) method-specs)
 		 ;; flet form
-		 collect `(,method-maker-name (,@field-names)
-					      (declare (type symbol ,@field-names))
+		 collect `(,method-maker-name (self ,@field-names)
+					      (declare (type symbol self ,@field-names))
 					      (lambda (,@method-lambda-list)
-						(let (,@(loop for f in field-names
+						(let ((*self* self)
+						      ,@(loop for f in field-names
 							   collect `(,f (symbol-value ,f))))
-						  (declare (ignorable ,@field-names))
+						  (declare (ignorable *self* ,@field-names))
 						  ,@method-body)))
 		 into flet-defs
 		 ;;
@@ -178,7 +180,7 @@
     ;; * method 生成
     (loop for (method-name method-maker-func) in method-specs
        do (add-symbolic-object-method method-name s-object
-				      (apply method-maker-func field-value-symbols)))
+				      (apply method-maker-func s-object field-value-symbols)))
     s-object))
 
 (define-symbolic-object-class test-class ()
@@ -186,7 +188,7 @@
    (field-b nil)
    (field-c))				; unbound
   ((method-hello ()
-		 (format t "Hello, class world!~%"))
+		 (format t "Hello, class world! I am ~A~%" *self*))
    (method-describe-test-class ()
 			       (format t "~&field-a = ~A, field-b = ~A, field-c = ~A~%"
 				       field-a field-b field-c))))
