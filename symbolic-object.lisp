@@ -128,14 +128,16 @@
 		 ;; spec 回収
 		 do (push `(list ',method-name #',method-maker-name) method-specs)
 		 ;; flet form
-		 collect `(,method-maker-name (self ,@field-names)
-					      (declare (type symbol self ,@field-names))
+		 collect `(,method-maker-name (s-object)
+					      (declare (type symbol s-object))
 					      (lambda (,@method-lambda-list)
-						(let ((*self* self)
-						      ,@(loop for f in field-names
-							   collect `(,f (symbol-value ,f))))
+						(let ((*self* s-object))
 						  (declare (ignorable *self* ,@field-names))
-						  ,@method-body)))
+						  (symbol-macrolet
+						      (,@(loop for f in field-names collect
+							      `(,f (symbol-value
+								    (find-symbol (symbol-name ',f) s-object)))))
+						    ,@method-body))))
 		 into flet-defs
 		 ;;
 		 finally
@@ -180,7 +182,7 @@
     ;; * method 生成
     (loop for (method-name method-maker-func) in method-specs
        do (add-symbolic-object-method method-name s-object
-				      (apply method-maker-func s-object field-value-symbols)))
+				      (funcall method-maker-func s-object)))
     s-object))
 
 (define-symbolic-object-class test-class ()
@@ -216,16 +218,18 @@
   ((field-b 10)				; override
    (field-c 100))			; override
   ((method-all-sum (&rest args)
-		   (apply #'+ field-a field-b field-c args))))
+		   (apply #'+ field-a field-b field-c args))
+   (method-inc-field-a (&optional delta)
+		       (incf field-a delta))))
 
 (apply-symbolic-object-class 'test-obj-2 'test-class-2)
 
-(call-symbolic-object-method 'method-hello 'test-obj-2)
 (method-hello 'test-obj-2)
-(call-symbolic-object-method 'method-describe-test-class 'test-obj-2)
 (method-describe-test-class 'test-obj-2)
 
-(call-symbolic-object-method 'method-all-sum 'test-obj-2)
 (method-all-sum 'test-obj-2)
-(call-symbolic-object-method 'method-all-sum 'test-obj-2 1000)
 (method-all-sum 'test-obj-2 1000)
+
+(method-inc 'test-obj-2)
+(method-describe-test-class 'test-obj-2)
+(method-all-sum 'test-obj-2)
