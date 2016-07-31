@@ -188,19 +188,18 @@
 (define-symbolic-object-class test-class ()
   ((field-a 1)
    (field-b nil)
-   (field-c))				; unbound
+   (field-c "string"))
   ((method-hello ()
-		 (format t "Hello, class world! I am ~A~%" *self*))
+     (format t "Hello, class world! I am ~A~%" *self*))
    (method-describe-test-class ()
-			       (format t "~&field-a = ~A, field-b = ~A, field-c = ~A~%"
-				       field-a field-b field-c))))
+     (format t "~&field-a = ~A, field-b = ~A, field-c = ~A~%"
+	     field-a field-b field-c))))
 
 (apply-symbolic-object-class 'test-obj 'test-class)
 
 ;; fields
 (format t "~& a ~A, b ~A, c ~A~%"
-	(field-a 'test-obj) (field-b 'test-obj)
-	(multiple-value-list (ignore-errors (field-c 'test-obj))))
+	(field-a 'test-obj) (field-b 'test-obj) (field-c 'test-obj))
 (setf (field-a 'test-obj) "a")
 (setf (field-b 'test-obj) "b")
 (setf (field-c 'test-obj) "c")
@@ -215,21 +214,36 @@
 
 ;; inheritance
 (define-symbolic-object-class test-class-2 (test-class)
-  ((field-b 10)				; override
-   (field-c 100))			; override
-  ((method-all-sum (&rest args)
-		   (apply #'+ field-a field-b field-c args))
-   (method-inc-field-a (&optional delta)
-		       (incf field-a delta))))
+  ((field-b 99999)
+   (field-c "abcdefg"))
+  ((method-hello ()
+     (format t "I am a subclass, my name is ~A~%" *self*))))
 
 (apply-symbolic-object-class 'test-obj-2 'test-class-2)
 
 (method-hello 'test-obj-2)
 (method-describe-test-class 'test-obj-2)
+(format t "~& a ~A, b ~A, c ~A~%"
+	(field-a 'test-obj-2) (field-b 'test-obj-2)
+	(multiple-value-list (ignore-errors (field-c 'test-obj-2))))
 
-(method-all-sum 'test-obj-2)
-(method-all-sum 'test-obj-2 1000)
 
-(method-inc 'test-obj-2)
-(method-describe-test-class 'test-obj-2)
-(method-all-sum 'test-obj-2)
+(define-symbolic-object-class test-class-3 (test-class)
+  ((field-b 10)				; override
+   (field-c))			; override, unbound
+  ((method-all-sum (&rest args)
+		   (apply #'+ field-a field-b field-c args))
+   (method-inc-field-a (&optional (delta 1))
+		       (incf field-a delta))))
+
+(apply-symbolic-object-class 'test-obj-3 'test-class-3)
+(setf (field-c 'test-obj-3) 100)
+(method-hello 'test-obj-3)
+(method-describe-test-class 'test-obj-3)
+
+(method-all-sum 'test-obj-3)
+(method-all-sum 'test-obj-3 1000)
+
+(method-inc-field-a 'test-obj-3)
+(method-describe-test-class 'test-obj-3)
+(method-all-sum 'test-obj-3)
