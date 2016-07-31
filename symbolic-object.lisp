@@ -11,10 +11,7 @@
 
 ;; '^:=' -- 関数を内側のobjectに持たせる -> symbol-plist に持たせる
 (defun add-symbolic-object-method (name s-object &optional function)
-  (cond ((null function)
-	 (setf (get s-object name) (get name :symbolic-method))) ; interface for define-symbolic-object-method 
-	(t
-	 (setf (get s-object name) function))))
+  (setf (get s-object name) function))
 
 (defun call-symbolic-object-method (name s-object &rest args)
   (apply (get s-object name) args))
@@ -23,25 +20,18 @@
 			    (lambda () (format t "Hello symbolic-method!~%")))
 (call-symbolic-object-method 'test-func 'test-obj)
 
-;; ガワ Macro 追加
-(defmacro define-symbolic-object-method (name lambda-list &body body)
-  `(setf (get ',name :symbolic-method)
-	 (lambda (,@lambda-list) ,@body)))
-
-(define-symbolic-object-method test-hello ()
-  (format t "Hello symbolic-method with define-symbolic-object-method!~%"))
-
-(add-symbolic-object-method 'test-hello 'test-obj)
-(call-symbolic-object-method 'test-hello 'test-obj)
-
-(define-symbolic-object-method test-hello-to (name)
-  (format t "Hello ~A!~%" name))
-
-(add-symbolic-object-method 'test-hello-to 'test-obj)
-(call-symbolic-object-method 'test-hello-to 'test-obj "hoge")
-
+;;; ガワ Macro 追加
 
 ;; 通常関数のように call する。
+
+#|
+;; 通常method のみversion
+(defun add-global-function-for-symbolic-object-method (defun-name &optional (method-name defun-name))
+  (setf (fdefinition defun-name)
+	(lambda (obj &rest args)
+	  (apply #'call-symbolic-object-method method-name obj args))))
+|#
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
 (defun add-global-function-for-symbolic-object-method (defun-name &optional (method-name defun-name))
   (cond ((and (listp defun-name)	; setf function
@@ -55,11 +45,26 @@
 		 (apply #'call-symbolic-object-method method-name obj args))))))
 )
 
-(add-global-function-for-symbolic-object-method 'test-hello)
+(add-global-function-for-symbolic-object-method 'test-func)
+(test-func 'test-obj)
+
+;; defun のように定義する。
+(defmacro define-symbolic-object-method (name s-object lambda-list &body body)
+  `(progn
+     (add-global-function-for-symbolic-object-method ',name)
+     (add-symbolic-object-method ',name ,s-object
+				 (lambda (,@lambda-list) ,@body))))
+
+(define-symbolic-object-method test-hello 'test-obj ()
+  (format t "Hello symbolic-method with define-symbolic-object-method!~%"))
+
 (test-hello 'test-obj)
 
-(add-global-function-for-symbolic-object-method 'test-hello-to)
+(define-symbolic-object-method test-hello-to 'test-obj (name)
+  (format t "Hello ~A!~%" name))
+
 (test-hello-to 'test-obj "hogehoge")
+
 
 ;; 逆順で call (おまけ)
 (defun add-global-function-for-symbolic-object (s-object)
@@ -71,7 +76,7 @@
 (test-obj 'test-hello)
   
 
-;; class
+;;; class
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun add-spec-into-spec-list (new-spec spec-list)
     (loop for spec-cons on spec-list
@@ -189,12 +194,6 @@
 			       (format t "~&field-a = ~A, field-b = ~A, field-c = ~A~%"
 				       field-a field-b field-c))))
 
-(define-symbolic-object-class test-class-2 (test-class)
-  ((field-b 10)				; override
-   (field-c 100))			; override
-  ((method-all-sum (&rest args)
-		   (apply #'+ field-a field-b field-c args))))
-
 (apply-symbolic-object-class 'test-obj 'test-class)
 
 ;; fields
@@ -214,6 +213,12 @@
 
 
 ;; inheritance
+(define-symbolic-object-class test-class-2 (test-class)
+  ((field-b 10)				; override
+   (field-c 100))			; override
+  ((method-all-sum (&rest args)
+		   (apply #'+ field-a field-b field-c args))))
+
 (apply-symbolic-object-class 'test-obj-2 'test-class-2)
 
 (call-symbolic-object-method 'method-hello 'test-obj-2)
