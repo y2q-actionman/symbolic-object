@@ -42,6 +42,7 @@
 
 
 ;; 通常関数のように call する。
+(eval-when (:compile-toplevel :load-toplevel :execute)
 (defun add-global-function-for-symbolic-object-method (defun-name &optional (method-name defun-name))
   (cond ((and (listp defun-name)	; setf function
 	      (eq (first defun-name) 'setf))
@@ -52,6 +53,7 @@
 	 (setf (fdefinition defun-name)
 	       (lambda (obj &rest args)
 		 (apply #'call-symbolic-object-method method-name obj args))))))
+)
 
 (add-global-function-for-symbolic-object-method 'test-hello)
 (test-hello 'test-obj)
@@ -70,21 +72,23 @@
   
 
 ;; class
-(defun add-spec-into-spec-list (new-spec spec-list)
-  (loop for spec-cons on spec-list
-     as spec = (car spec-cons)
-     if (eq (first spec) (first new-spec)) ; if exists, overwrite it.
-     return (nconc ret (list* new-spec (cdr spec-cons)))
-     else
-     collect spec into ret
-     finally (return (list* new-spec spec-list)))) ; if not found, add it.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun add-spec-into-spec-list (new-spec spec-list)
+    (loop for spec-cons on spec-list
+       as spec = (car spec-cons)
+       if (eq (first spec) (first new-spec)) ; if exists, overwrite it.
+       return (nconc ret (list* new-spec (cdr spec-cons)))
+       else
+       collect spec into ret
+       finally (return (list* new-spec spec-list)))) ; if not found, add it.
 
-(defun merge-spec-list (spec-list new-spec-list)
-  (loop for s in new-spec-list
-     do (setf spec-list (add-spec-into-spec-list s spec-list)))
-  spec-list)
+  (defun merge-spec-list (spec-list new-spec-list)
+    (loop for s in new-spec-list
+       do (setf spec-list (add-spec-into-spec-list s spec-list)))
+    spec-list)
 
-(defvar *check-global-function-existence* t)
+  (defvar *check-global-function-existence* t)
+  )
 
 (defmacro define-symbolic-object-class (name super-class-names fields methods)
   (let* ((this-class-field-specs
@@ -109,11 +113,10 @@
 	     as all-specs = super-class-field-specs
 	     then (merge-spec-list all-specs super-class-field-specs)
 	     finally
-	       (setf all-specs (merge-spec-list all-specs this-class-field-specs))
-	       (setf (get name :symbolic-class-field-specs) all-specs)
-	       (return all-specs)))
+	       (return (merge-spec-list all-specs this-class-field-specs))))
 	 (field-names  (mapcar #'car all-field-specs))
 	 (method-specs nil))
+    (setf (get name :symbolic-class-field-specs) all-field-specs)
     ;; generate method-making functions
     `(flet (,@(loop for (method-name method-lambda-list . method-body) in methods
 		 as method-maker-name = (gensym (format nil "method-maker-~A" method-name))
@@ -136,7 +139,7 @@
 		 finally
 		   (setf method-specs (nreverse method-specs))
 		   (return flet-defs)))
-       ;; merge method specs
+       ;; merge and set method specs
        (loop with this-class-method-specs = nil
 	  for class-name in ',super-class-names
 	  do (setf this-class-method-specs (merge-spec-list this-class-method-specs
@@ -157,6 +160,7 @@
     ;; * field 生成
     (loop for (field-name reader-name writer-name . field-inits) in field-specs
        as sym = (intern field-name namespace)
+       do (push sym field-value-symbols)
        ;; initialize
        if field-inits
        do (setf (symbol-value sym) (first field-inits))
@@ -168,11 +172,7 @@
 					(lambda () (symbol-value field-symbol))))
 	 (add-symbolic-object-method writer-name s-object
 				     (let ((field-symbol sym))
-					  (lambda (val) (setf (symbol-value field-symbol) val))))
-       ;;
-       collect sym into field-syms
-       finally
-	 (setf field-value-symbols field-syms))
+					  (lambda (val) (setf (symbol-value field-symbol) val)))))
     ;; * method 生成
     (loop for (method-name method-maker-func) in method-specs
        do (add-symbolic-object-method method-name s-object
