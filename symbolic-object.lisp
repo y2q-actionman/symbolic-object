@@ -78,19 +78,14 @@
 
 ;;; class
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defun add-spec-into-spec-list (new-spec spec-list)
-    (loop for spec-cons on spec-list
-       as spec = (car spec-cons)
-       if (eq (first spec) (first new-spec)) ; if exists, overwrite it.
-       return (nconc ret (list* new-spec (cdr spec-cons)))
-       else
-       collect spec into ret
-       finally (return (list* new-spec spec-list)))) ; if not found, add it.
-
   (defun merge-spec-list (spec-list new-spec-list)
-    (loop for s in new-spec-list
-       do (setf spec-list (add-spec-into-spec-list s spec-list)))
-    spec-list)
+    (flet ((spec-name (spec)
+	     (symbol-name (first spec))))
+      (let* ((sorted-new-specs (stable-sort (copy-list new-spec-list)
+					    #'string< :key #'spec-name))
+	     (merged (merge 'list (copy-list spec-list)
+			    sorted-new-specs #'string< :key #'spec-name)))
+	(delete-duplicates merged :test 'eq :key #'spec-name))))
 
   (defvar *check-global-function-existence* t)
   )
@@ -177,7 +172,9 @@
 					(lambda () (symbol-value field-symbol))))
 	 (add-symbolic-object-method writer-name s-object
 				     (let ((field-symbol sym))
-					  (lambda (val) (setf (symbol-value field-symbol) val)))))
+				       (lambda (val) (setf (symbol-value field-symbol) val))))
+       finally
+         (setf field-value-symbols (nreverse field-value-symbols)))
     ;; * method 生成
     (loop for (method-name method-maker-func) in method-specs
        do (add-symbolic-object-method method-name s-object
